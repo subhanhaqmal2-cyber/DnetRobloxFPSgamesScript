@@ -493,6 +493,8 @@ local Button = MainTab:CreateButton({
                Beam, Att0, Att1 = nil, nil, nil
             end
          end
+         -- persistent stretch after aimbot lock
+         Camera.CFrame = Camera.CFrame * CFrame.new(0, 0, 0, 1, 0, 0, 0, 0.67, 0, 0, 0, 1)
       end)
       UserInputService.InputBegan:Connect(function(input, gp)
          if gp then return end
@@ -506,7 +508,7 @@ local Button = MainTab:CreateButton({
          end
       end)
       Players.PlayerRemoving:Connect(cleanupPlayer)
-      print("rainbow esp + skeleton + laser aimbot + fov circle loaded")
+      print("rainbow esp + skeleton + laser aimbot + fov circle + persistent stretch loaded")
    end,
 })
 
@@ -530,7 +532,7 @@ local Slider = MainTab:CreateSlider({
          setreadonly(mt, false)
          mt.__newindex = newcclosure(function(self, key, val)
             if self == humanoid and key == "WalkSpeed" and val ~= Value then
-               return -- block server revert
+               return
             end
             return old_newindex(self, key, val)
          end)
@@ -557,29 +559,103 @@ local Slider = MainTab:CreateSlider({
    end,
 })
 
+-- hitbox expander toggle + size slider
+local HitboxEnabled = false
+local HitboxSize = 10
+
+local Toggle = MainTab:CreateToggle({
+   Name = "Hitbox Expander",
+   CurrentValue = false,
+   Flag = "HitboxToggle",
+   Callback = function(Value)
+      HitboxEnabled = Value
+      if not Value then
+         -- reset all on disable
+         for _, plr in ipairs(game.Players:GetPlayers()) do
+            if plr ~= game.Players.LocalPlayer and plr.Character then
+               local head = plr.Character:FindFirstChild("Head")
+               if head then head.Size = Vector3.new(1.2, 1.2, 1.2) end
+               local root = plr.Character:FindFirstChild("HumanoidRootPart")
+               if root then root.Size = Vector3.new(2, 2, 1) end
+            end
+         end
+         Rayfield:Notify({Title = "Hitbox", Content = "Disabled & reset", Duration = 3})
+      else
+         Rayfield:Notify({Title = "Hitbox", Content = "Enabled - size " .. HitboxSize, Duration = 3})
+      end
+   end,
+})
+
+local Slider = MainTab:CreateSlider({
+   Name = "Hitbox Size",
+   Range = {5, 25},
+   Increment = 1,
+   Suffix = "Studs",
+   CurrentValue = 10,
+   Flag = "HitboxSize",
+   Callback = function(Value)
+      HitboxSize = Value
+      if HitboxEnabled then
+         Rayfield:Notify({Title = "Hitbox Updated", Content = "New size: " .. Value, Duration = 2})
+      end
+   end,
+})
+
+-- expander loop (runs always, but only expands if enabled)
+game:GetService("RunService").Heartbeat:Connect(function()
+   if not HitboxEnabled then return end
+   for _, plr in ipairs(game.Players:GetPlayers()) do
+      if plr ~= game.Players.LocalPlayer and plr.Character then
+         local head = plr.Character:FindFirstChild("Head")
+         if head and head:IsA("Part") then
+            head.Size = Vector3.new(HitboxSize, HitboxSize, HitboxSize)
+            head.Transparency = 0.7  -- slight see-thru so you know it's expanded (optional, remove if you want invisible)
+            head.CanCollide = false
+         end
+         local root = plr.Character:FindFirstChild("HumanoidRootPart")
+         if root then
+            root.Size = Vector3.new(HitboxSize * 1.5, HitboxSize * 1.5, HitboxSize)
+            root.Transparency = 1
+            root.CanCollide = false
+         end
+      end
+   end
+end)
+
 local MiscTab = Window:CreateTab("Misc🍃", nil)
 local Section = MiscTab:CreateSection("Misc🍃")
 
 local Button = MiscTab:CreateButton({
-   Name = "Stretch res",
+   Name = "Stretch res (persistent)",
    Callback = function()
       local Camera = workspace.CurrentCamera
-      if getgenv().StretchActive ~= true then
-         game:GetService("RunService").RenderStepped:Connect(function()
-            Camera.CFrame = Camera.CFrame * CFrame.new(0, 0, 0, 1, 0, 0, 0, 0.67, 0, 0, 0, 1)
-         end)
-         getgenv().StretchActive = true
-         Rayfield:Notify({
-            Title = "Stretch Res Activated",
-            Content = "Y-scale 0.67 - stretched horizontal fov",
-            Duration = 4.5,
-         })
-      else
+      if getgenv().StretchActive then
          Rayfield:Notify({
             Title = "Stretch Res",
-            Content = "Already active",
+            Content = "Already running - persistent mode",
             Duration = 3,
          })
+         return
       end
+
+      getgenv().StretchActive = true
+      getgenv().LastCameraCFrame = Camera.CFrame
+
+      game:GetService("RunService").Stepped:Connect(function()
+         if not getgenv().StretchActive then return end
+         local current = Camera.CFrame
+         if current ~= getgenv().LastCameraCFrame then
+            Camera.CFrame = current * CFrame.new(0, 0, 0, 1, 0, 0, 0, 0.67, 0, 0, 0, 1)
+            getgenv().LastCameraCFrame = Camera.CFrame
+         else
+            Camera.CFrame = current * CFrame.new(0, 0, 0, 1, 0, 0, 0, 0.67, 0, 0, 0, 1)
+         end
+      end)
+
+      Rayfield:Notify({
+         Title = "Stretch Res Activated",
+         Content = "Persistent mode - survives clicks, aim lock, tp",
+         Duration = 5,
+      })
    end,
 })
